@@ -13,7 +13,18 @@ export interface SignInData {
   password: string;
 }
 
-export async function signUp(data: SignUpData) {
+export interface SignUpResult {
+  success: boolean;
+  needsConfirmation: boolean;
+  message: string;
+}
+
+/**
+ * 新規登録
+ * - メール確認が必要な場合は needsConfirmation: true を返す
+ * - usage_logs の記録失敗は無視して登録自体は成功させる
+ */
+export async function signUp(data: SignUpData): Promise<SignUpResult> {
   const { email, password, full_name, category } = data;
 
   const { data: authData, error } = await supabase.auth.signUp({
@@ -29,14 +40,32 @@ export async function signUp(data: SignUpData) {
 
   if (error) throw error;
 
-  // Log usage
-  if (authData.user) {
-    await logUserLogin(authData.user.id);
+  // Supabase がセッションを返さない → メール確認が必要
+  if (!authData.session) {
+    return {
+      success: true,
+      needsConfirmation: true,
+      message: '確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。',
+    };
   }
 
-  return authData;
+  // セッションがある → そのままログイン状態になる
+  try {
+    await logUserLogin(authData.user!.id);
+  } catch {
+    // ログ記録失敗は無視
+  }
+
+  return {
+    success: true,
+    needsConfirmation: false,
+    message: '登録が完了しました。',
+  };
 }
 
+/**
+ * ログイン
+ */
 export async function signIn(data: SignInData) {
   const { email, password } = data;
 
@@ -45,29 +74,49 @@ export async function signIn(data: SignInData) {
     password,
   });
 
-  if (error) throw error;
+  if (error) {
+    // Supabase の英語エラーを日本語に変換
+    if (error.message === 'Invalid login credentials') {
+      throw new Error('メールアドレスまたはパスワードが正しくありません。\n新規登録がお済みでない場合は「新規登録」からアカウントを作成してください。');
+    }
+    if (error.message.includes('Email not confirmed')) {
+      throw new Error('メールアドレスの確認が完了していません。受信箱を確認し、確認メールのリンクをクリックしてください。');
+    }
+    throw new Error(error.message);
+  }
 
-  // Log usage
-  if (authData.user) {
-    await logUserLogin(authData.user.id);
+  // 利用ログ記録（失敗しても無視）
+  try {
+    if (authData.user) {
+      await logUserLogin(authData.user.id);
+    }
+  } catch {
+    // ignore
   }
 
   return authData;
 }
 
 export async function signOut() {
-  // Update logout time
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (user) {
-    await logUserLogout(user.id);
+    try {
+      await logUserLogout(user.id);
+    } catch {
+      // ignore
+    }
   }
-
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
 }
 
 export async function getCurrentUser() {
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
   if (error) throw error;
   return user;
 }
@@ -86,18 +135,15 @@ export async function getCurrentProfile() {
   return data;
 }
 
-// Usage logging functions
+// ── Usage Logging ──────────────────────────
 async function logUserLogin(userId: string) {
-  const deviceInfo = typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown';
+  const deviceInfo =
+    typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown';
 
-  const { error } = await supabase
-    .from('usage_logs')
-    .insert({
-      user_id: userId,
-      device_info: deviceInfo,
-    });
-
-  if (error) console.error('Failed to log user login:', error);
+  await supabase.from('usage_logs').insert({
+    user_id: userId,
+    device_info: deviceInfo,
+  });
 }
 
 async function logUserLogout(userId: string) {
@@ -110,11 +156,9 @@ async function logUserLogout(userId: string) {
     .limit(1);
 
   if (logs && logs.length > 0) {
-    const { error } = await supabase
+    await supabase
       .from('usage_logs')
       .update({ logout_at: new Date().toISOString() })
       .eq('id', logs[0].id);
-
-    if (error) console.error('Failed to log user logout:', error);
   }
 }

@@ -2,16 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ダークモードを無効化し、常にライトモードを強制 */
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  color-scheme: light;
 }
 
 body {
@@ -24,22 +19,35 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* 全 input / select / textarea のテキストを黒に強制 */
+input,
+select,
+textarea {
+  color: #111827 !important;           /* text-gray-900 */
+  background-color: #ffffff !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af !important;           /* text-gray-400 */
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
 }
 
-/* Mobile First - Large text for readability */
+/* Mobile First */
 @media (max-width: 768px) {
   body {
     font-size: 16px;
   }
-  
+
   h1 {
     font-size: 2rem;
   }
-  
+
   h2 {
     font-size: 1.5rem;
   }

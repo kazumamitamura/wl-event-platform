@@ -1,13 +1,13 @@
 -- ============================================
 -- ウエイトリフティング競技運営プラットフォーム
 -- Database Schema (Safe Version - IF NOT EXISTS)
+-- v2: RLS 修正 + Realtime 有効化
 -- ============================================
 
--- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================
--- 1. profiles (ユーザープロフィール)
+-- 1. profiles
 -- ============================================
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -17,21 +17,21 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- RLS Policies for profiles
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
-CREATE POLICY "Users can view their own profile"
-  ON profiles FOR SELECT
-  USING (auth.uid() = id);
+DROP POLICY IF EXISTS "profiles_select_own" ON profiles;
+CREATE POLICY "profiles_select_own"
+  ON profiles FOR SELECT USING (auth.uid() = id);
 
-DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
-CREATE POLICY "Users can update their own profile"
-  ON profiles FOR UPDATE
-  USING (auth.uid() = id);
+DROP POLICY IF EXISTS "profiles_update_own" ON profiles;
+CREATE POLICY "profiles_update_own"
+  ON profiles FOR UPDATE USING (auth.uid() = id);
+
+-- handle_new_user (SECURITY DEFINER) が INSERT するので
+-- INSERT ポリシーは不要（RLS バイパス）
 
 -- ============================================
--- 2. usage_logs (利用ログ)
+-- 2. usage_logs
 -- ============================================
 CREATE TABLE IF NOT EXISTS usage_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -42,26 +42,22 @@ CREATE TABLE IF NOT EXISTS usage_logs (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- RLS Policies for usage_logs
 ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Users can view their own logs" ON usage_logs;
-CREATE POLICY "Users can view their own logs"
-  ON usage_logs FOR SELECT
-  USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "usage_logs_select_own" ON usage_logs;
+CREATE POLICY "usage_logs_select_own"
+  ON usage_logs FOR SELECT USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Users can insert their own logs" ON usage_logs;
-CREATE POLICY "Users can insert their own logs"
-  ON usage_logs FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "usage_logs_insert_own" ON usage_logs;
+CREATE POLICY "usage_logs_insert_own"
+  ON usage_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Users can update their own logs" ON usage_logs;
-CREATE POLICY "Users can update their own logs"
-  ON usage_logs FOR UPDATE
-  USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "usage_logs_update_own" ON usage_logs;
+CREATE POLICY "usage_logs_update_own"
+  ON usage_logs FOR UPDATE USING (auth.uid() = user_id);
 
 -- ============================================
--- 3. competitions (大会情報)
+-- 3. competitions
 -- ============================================
 CREATE TABLE IF NOT EXISTS competitions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -75,27 +71,34 @@ CREATE TABLE IF NOT EXISTS competitions (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- RLS Policies for competitions
 ALTER TABLE competitions ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Everyone can view competitions" ON competitions;
-CREATE POLICY "Everyone can view competitions"
-  ON competitions FOR SELECT
-  USING (true);
+-- 全員が閲覧可能
+DROP POLICY IF EXISTS "competitions_select_all" ON competitions;
+CREATE POLICY "competitions_select_all"
+  ON competitions FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Only admins can manage competitions" ON competitions;
-CREATE POLICY "Only admins can manage competitions"
-  ON competitions FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-      AND profiles.category = '運営'
-    )
+-- 運営のみ INSERT/UPDATE/DELETE
+DROP POLICY IF EXISTS "competitions_insert_admin" ON competitions;
+CREATE POLICY "competitions_insert_admin"
+  ON competitions FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+  );
+
+DROP POLICY IF EXISTS "competitions_update_admin" ON competitions;
+CREATE POLICY "competitions_update_admin"
+  ON competitions FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+  );
+
+DROP POLICY IF EXISTS "competitions_delete_admin" ON competitions;
+CREATE POLICY "competitions_delete_admin"
+  ON competitions FOR DELETE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
   );
 
 -- ============================================
--- 4. athletes (選手エントリー)
+-- 4. athletes
 -- ============================================
 CREATE TABLE IF NOT EXISTS athletes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -111,27 +114,32 @@ CREATE TABLE IF NOT EXISTS athletes (
   UNIQUE(competition_id, lot_number)
 );
 
--- RLS Policies for athletes
 ALTER TABLE athletes ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Everyone can view athletes" ON athletes;
-CREATE POLICY "Everyone can view athletes"
-  ON athletes FOR SELECT
-  USING (true);
+DROP POLICY IF EXISTS "athletes_select_all" ON athletes;
+CREATE POLICY "athletes_select_all"
+  ON athletes FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Only admins can manage athletes" ON athletes;
-CREATE POLICY "Only admins can manage athletes"
-  ON athletes FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-      AND profiles.category = '運営'
-    )
+DROP POLICY IF EXISTS "athletes_insert_admin" ON athletes;
+CREATE POLICY "athletes_insert_admin"
+  ON athletes FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+  );
+
+DROP POLICY IF EXISTS "athletes_update_admin" ON athletes;
+CREATE POLICY "athletes_update_admin"
+  ON athletes FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+  );
+
+DROP POLICY IF EXISTS "athletes_delete_admin" ON athletes;
+CREATE POLICY "athletes_delete_admin"
+  ON athletes FOR DELETE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
   );
 
 -- ============================================
--- 5. attempts (試技記録)
+-- 5. attempts
 -- ============================================
 CREATE TABLE IF NOT EXISTS attempts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -146,27 +154,32 @@ CREATE TABLE IF NOT EXISTS attempts (
   UNIQUE(athlete_id, lift_type, attempt_number)
 );
 
--- RLS Policies for attempts
 ALTER TABLE attempts ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Everyone can view attempts" ON attempts;
-CREATE POLICY "Everyone can view attempts"
-  ON attempts FOR SELECT
-  USING (true);
+DROP POLICY IF EXISTS "attempts_select_all" ON attempts;
+CREATE POLICY "attempts_select_all"
+  ON attempts FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Only admins can manage attempts" ON attempts;
-CREATE POLICY "Only admins can manage attempts"
-  ON attempts FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
-      AND profiles.category = '運営'
-    )
+DROP POLICY IF EXISTS "attempts_insert_admin" ON attempts;
+CREATE POLICY "attempts_insert_admin"
+  ON attempts FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+  );
+
+DROP POLICY IF EXISTS "attempts_update_admin" ON attempts;
+CREATE POLICY "attempts_update_admin"
+  ON attempts FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+  );
+
+DROP POLICY IF EXISTS "attempts_delete_admin" ON attempts;
+CREATE POLICY "attempts_delete_admin"
+  ON attempts FOR DELETE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
   );
 
 -- ============================================
--- Triggers for updated_at
+-- Triggers: updated_at 自動更新
 -- ============================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -178,24 +191,21 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS update_competitions_updated_at ON competitions;
 CREATE TRIGGER update_competitions_updated_at
-  BEFORE UPDATE ON competitions
-  FOR EACH ROW
+  BEFORE UPDATE ON competitions FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
 DROP TRIGGER IF EXISTS update_athletes_updated_at ON athletes;
 CREATE TRIGGER update_athletes_updated_at
-  BEFORE UPDATE ON athletes
-  FOR EACH ROW
+  BEFORE UPDATE ON athletes FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
 DROP TRIGGER IF EXISTS update_attempts_updated_at ON attempts;
 CREATE TRIGGER update_attempts_updated_at
-  BEFORE UPDATE ON attempts
-  FOR EACH ROW
+  BEFORE UPDATE ON attempts FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- Function: Create profile on signup
+-- Trigger: Auth ユーザー作成時にプロフィール自動生成
 -- ============================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
@@ -211,20 +221,35 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger for profile creation
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW
+  AFTER INSERT ON auth.users FOR EACH ROW
   EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================
--- Indexes for performance
+-- Indexes
 -- ============================================
 CREATE INDEX IF NOT EXISTS idx_athletes_competition ON athletes(competition_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_athlete ON attempts(athlete_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_is_current ON attempts(is_current) WHERE is_current = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user ON usage_logs(user_id);
 
--- 完了メッセージ
-SELECT 'Schema setup completed successfully!' as message;
+-- ============================================
+-- Realtime 有効化 (attempts テーブルの変更を配信)
+-- ============================================
+DO $$
+BEGIN
+  -- attempts テーブルを Realtime パブリケーションに追加
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND tablename = 'attempts'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE attempts;
+  END IF;
+END
+$$;
+
+-- ============================================
+SELECT 'Schema v2 setup completed successfully!' as message;

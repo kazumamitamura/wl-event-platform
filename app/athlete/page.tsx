@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useCompetitionStore } from '@/lib/store/competition-store';
-import { calculateWaitCount, buildAttemptQueue } from '@/lib/wait-counter';
-import type { Competition, Athlete, WaitCounterInfo } from '@/types';
+import { calculateWaitAttempts, buildAttemptQueue } from '@/lib/wait-counter';
+import type { Competition, WaitCounterInfo } from '@/types';
 
 export default function AthletePage() {
   const router = useRouter();
@@ -14,108 +15,115 @@ export default function AthletePage() {
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
   const [waitInfo, setWaitInfo] = useState<WaitCounterInfo | null>(null);
 
-  const { currentCompetition, athletes, attempts, setCompetition, setAthletes, setAttempts } =
-    useCompetitionStore();
+  const {
+    currentCompetition,
+    athletes,
+    attempts,
+    setCompetition,
+    setAthletes,
+    setAttempts,
+  } = useCompetitionStore();
 
+  // ── 大会一覧取得 ──────────────────
   useEffect(() => {
     loadCompetitions();
   }, []);
 
-  useEffect(() => {
-    if (selectedCompId) {
-      loadCompetitionData(selectedCompId);
-      subscribeToChanges(selectedCompId);
-    }
-  }, [selectedCompId]);
-
-  useEffect(() => {
-    if (selectedAthleteId && currentCompetition) {
-      updateWaitInfo();
-    }
-  }, [selectedAthleteId, athletes, attempts, currentCompetition]);
-
   const loadCompetitions = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('competitions')
       .select('*')
       .in('status', ['active', 'upcoming'])
       .order('date', { ascending: false });
-
     if (data) setCompetitions(data);
   };
 
-  const loadCompetitionData = async (compId: string) => {
-    const { data: comp } = await supabase
-      .from('competitions')
-      .select('*')
-      .eq('id', compId)
-      .single();
+  // ── 大会データ読み込み ────────────
+  const loadCompetitionData = useCallback(
+    async (compId: string) => {
+      const { data: comp } = await supabase
+        .from('competitions')
+        .select('*')
+        .eq('id', compId)
+        .single();
+      if (comp) setCompetition(comp);
 
-    if (comp) setCompetition(comp);
+      const { data: athletesData } = await supabase
+        .from('athletes')
+        .select('*')
+        .eq('competition_id', compId)
+        .order('name');
+      if (athletesData) setAthletes(athletesData);
 
-    const { data: athletesData } = await supabase
-      .from('athletes')
-      .select('*')
-      .eq('competition_id', compId)
-      .order('name');
+      const { data: attemptsData } = await supabase
+        .from('attempts')
+        .select('*')
+        .in('athlete_id', athletesData?.map((a) => a.id) ?? []);
+      if (attemptsData) setAttempts(attemptsData);
+    },
+    [setCompetition, setAthletes, setAttempts]
+  );
 
-    if (athletesData) setAthletes(athletesData);
+  // ── Realtime 購読 ─────────────────
+  useEffect(() => {
+    if (!selectedCompId) return;
 
-    const { data: attemptsData } = await supabase
-      .from('attempts')
-      .select('*')
-      .in(
-        'athlete_id',
-        athletesData?.map((a) => a.id) || []
-      );
+    loadCompetitionData(selectedCompId);
 
-    if (attemptsData) setAttempts(attemptsData);
-  };
-
-  const subscribeToChanges = (compId: string) => {
     const channel = supabase
-      .channel('athlete-changes')
+      .channel(`athlete-${selectedCompId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'attempts' },
-        () => {
-          loadCompetitionData(compId);
-        }
+        () => loadCompetitionData(selectedCompId)
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  };
+  }, [selectedCompId, loadCompetitionData]);
 
-  const updateWaitInfo = () => {
-    if (!selectedAthleteId || !currentCompetition) return;
+  // ── 待機本数の再計算 ──────────────
+  useEffect(() => {
+    if (selectedAthleteId && currentCompetition) {
+      const info = calculateWaitAttempts(
+        selectedAthleteId,
+        athletes,
+        attempts,
+        currentCompetition
+      );
+      setWaitInfo(info);
+    } else {
+      setWaitInfo(null);
+    }
+  }, [selectedAthleteId, athletes, attempts, currentCompetition]);
 
-    const info = calculateWaitCount(selectedAthleteId, athletes, attempts, currentCompetition);
-    setWaitInfo(info);
-  };
-
-  const queue = currentCompetition && athletes.length > 0 ? buildAttemptQueue(athletes, attempts) : [];
+  // ── キュー構築 ────────────────────
+  const queue =
+    currentCompetition && athletes.length > 0
+      ? buildAttemptQueue(athletes, attempts)
+      : [];
   const currentAttempt = queue.find((q) => q.is_current);
 
+  // ── Render ────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
-        <div className="bg-white p-6 rounded-2xl shadow-lg">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">選手用画面</h1>
-            <button
-              onClick={() => router.push('/')}
-              className="px-4 py-2 text-gray-600 hover:text-gray-900"
-            >
-              ← ホーム
-            </button>
-          </div>
+        <div className="bg-white p-6 rounded-2xl shadow-lg flex justify-between items-center">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+            選手用画面
+          </h1>
+          <Link
+            href="/"
+            className="px-4 py-2 text-gray-600 hover:text-gray-900"
+          >
+            ← ホーム
+          </Link>
         </div>
 
-        {/* Competition Selector */}
+        {/* 大会選択 */}
         <div className="bg-white p-6 rounded-2xl shadow-lg">
           <label className="block text-lg font-semibold text-gray-700 mb-3">
             大会を選択
@@ -125,8 +133,9 @@ export default function AthletePage() {
             onChange={(e) => {
               setSelectedCompId(e.target.value);
               setSelectedAthleteId('');
+              setWaitInfo(null);
             }}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-base"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-indigo-500 text-base"
           >
             <option value="">-- 大会を選択してください --</option>
             {competitions.map((comp) => (
@@ -137,7 +146,7 @@ export default function AthletePage() {
           </select>
         </div>
 
-        {/* Athlete Selector */}
+        {/* 選手選択 */}
         {selectedCompId && (
           <div className="bg-white p-6 rounded-2xl shadow-lg">
             <label className="block text-lg font-semibold text-gray-700 mb-3">
@@ -146,7 +155,7 @@ export default function AthletePage() {
             <select
               value={selectedAthleteId}
               onChange={(e) => setSelectedAthleteId(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-base"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-indigo-500 text-base"
             >
               <option value="">-- 選手を選択してください --</option>
               {athletes.map((athlete) => (
@@ -158,28 +167,33 @@ export default function AthletePage() {
           </div>
         )}
 
-        {/* Current Bar Weight */}
+        {/* ── 現在のバー重量 ────────── */}
         {currentAttempt && (
           <div className="bg-indigo-600 text-white p-8 rounded-2xl shadow-lg text-center">
-            <div className="text-sm uppercase tracking-wide mb-2">現在のバー重量</div>
+            <div className="text-sm uppercase tracking-wide mb-2">
+              現在のバー重量
+            </div>
             <div className="text-5xl md:text-6xl font-bold mb-2">
               {currentAttempt.declared_weight}kg
             </div>
             <div className="text-lg">
-              {currentAttempt.athlete_name} - {currentAttempt.lift_type} {currentAttempt.attempt_number}回目
+              {currentAttempt.athlete_name} — {currentAttempt.lift_type}{' '}
+              {currentAttempt.attempt_number}回目
             </div>
           </div>
         )}
 
-        {/* Wait Counter */}
+        {/* ── 待機本数 ──────────────── */}
         {waitInfo && (
           <div className="bg-white p-8 rounded-2xl shadow-lg">
             <div className="text-center space-y-6">
               <div>
-                <div className="text-xl text-gray-700 mb-2">
+                <div className="text-xl text-gray-700 mb-1">
                   {waitInfo.athlete_name} さん
                 </div>
-                <div className="text-sm text-gray-500">次の試技重量: {waitInfo.current_weight}kg</div>
+                <div className="text-sm text-gray-500">
+                  次の試技重量: {waitInfo.current_weight}kg
+                </div>
               </div>
 
               <div className="py-8">
@@ -191,22 +205,27 @@ export default function AthletePage() {
                 </div>
               </div>
 
+              {/* 内訳 */}
               {waitInfo.next_athletes.length > 0 && (
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold text-gray-700 mb-4">
-                    あなたより前の選手（抜粋）
+                <div className="border-t pt-6 text-left">
+                  <h3 className="text-lg font-semibold text-gray-700 mb-4 text-center">
+                    あなたより前の選手
                   </h3>
                   <div className="space-y-3">
-                    {waitInfo.next_athletes.slice(0, 5).map((next, index) => (
+                    {waitInfo.next_athletes.map((next, idx) => (
                       <div
-                        key={index}
+                        key={idx}
                         className="flex justify-between items-center p-3 bg-gray-50 rounded-lg"
                       >
-                        <span className="font-medium">{next.name}</span>
+                        <span className="font-medium text-gray-900">
+                          {next.name}
+                        </span>
                         <div className="text-right">
-                          <div className="font-bold">{next.weight}kg</div>
+                          <div className="font-bold text-gray-900">
+                            {next.weight}kg
+                          </div>
                           <div className="text-sm text-gray-500">
-                            予測: {next.predicted_attempts}本
+                            予測 +{next.predicted_attempts}本
                           </div>
                         </div>
                       </div>
@@ -218,10 +237,12 @@ export default function AthletePage() {
           </div>
         )}
 
-        {/* Next Athletes Queue */}
+        {/* ── 試技順 上位5件 ─────────── */}
         {selectedCompId && queue.length > 0 && (
           <div className="bg-white p-6 rounded-2xl shadow-lg">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">次の試技順（5人）</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">
+              次の試技順
+            </h2>
             <div className="space-y-3">
               {queue.slice(0, 5).map((item, index) => (
                 <div
@@ -234,11 +255,14 @@ export default function AthletePage() {
                 >
                   <div className="flex justify-between items-center">
                     <div>
-                      <div className="font-semibold text-lg">
+                      <div className="font-semibold text-lg text-gray-900">
                         {index + 1}. {item.athlete_name}
                       </div>
                       <div className="text-sm text-gray-600">
                         {item.lift_type} {item.attempt_number}回目
+                        <span className="ml-2 text-gray-400">
+                          Lot#{item.lot_number}
+                        </span>
                       </div>
                     </div>
                     <div className="text-2xl font-bold text-indigo-600">
