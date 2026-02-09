@@ -547,136 +547,89 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ── 試技順テーブル ─────────── */}
+          {/* ── 残り本数カウンター ────── */}
           {currentCompetition && queue.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b bg-gray-50 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-900">
-                  試技順リスト（バーベル・ローデッド法）
-                </h2>
-                <span className="text-sm text-gray-500">
-                  残り {queue.length} 本
+            <div className="bg-white rounded-xl shadow-sm p-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">
+                試技順（バーベル・ローデッド法）
+              </h2>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500">残り</span>
+                <span className="text-3xl font-black text-indigo-600 tabular-nums">
+                  {queue.length}
                 </span>
+                <span className="text-sm text-gray-500">本</span>
               </div>
+            </div>
+          )}
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-gray-900 text-sm" key={refreshKey}>
-                  <thead>
-                    <tr className="bg-gray-50 border-b">
-                      <th className="px-3 py-3 text-left font-semibold text-gray-600 w-12">
-                        順位
-                      </th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-600">
-                        選手名
-                      </th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-600">
-                        所属
-                      </th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-600 w-16">
-                        Lot
-                      </th>
-                      <th className="px-3 py-3 text-right font-semibold text-gray-600">
-                        重量
-                      </th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-600 w-24">
-                        試技
-                      </th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-600 w-28">
-                        操作
-                      </th>
-                    </tr>
-                  </thead>
+          {/* ── 試技順グリッド（横10人 × 行追加）──── */}
+          {currentCompetition && queue.length > 0 && (
+            <div className="grid grid-cols-5 md:grid-cols-10 gap-2" key={refreshKey}>
+              {queue.map((item, idx) => {
+                const isTop = idx === 0;
+                return (
+                  <button
+                    key={item.attempt_id}
+                    onClick={() => {
+                      if (!isTop) setCurrentAttempt(item.attempt_id);
+                    }}
+                    className={`
+                      relative rounded-xl p-2 text-center transition-all duration-300 animate-grid-fade-in
+                      ${
+                        isTop
+                          ? 'bg-red-500 text-white shadow-lg ring-2 ring-red-300 scale-105'
+                          : 'bg-white text-gray-900 shadow-sm hover:shadow-md hover:scale-105 border border-gray-200'
+                      }
+                    `}
+                    style={{ animationDelay: `${idx * 30}ms` }}
+                  >
+                    {/* 順位バッジ */}
+                    <div
+                      className={`text-[10px] font-bold mb-0.5 ${
+                        isTop ? 'text-red-200' : 'text-gray-400'
+                      }`}
+                    >
+                      #{idx + 1}
+                    </div>
 
-                  <tbody>
-                    {queue.map((item, idx) => {
-                      const isTop = idx === 0;
-                      return (
-                        <tr
-                          key={item.attempt_id}
-                          className={`
-                            border-b last:border-b-0 transition-all duration-500
-                            ${
-                              isTop
-                                ? 'bg-yellow-100 border-l-4 border-l-red-500 animate-row-fade-in'
-                                : 'hover:bg-gray-50 animate-row-fade-in'
-                            }
-                          `}
-                          style={{ animationDelay: `${idx * 40}ms` }}
-                        >
-                          {/* 順位 */}
-                          <td
-                            className={`px-3 py-3 ${
-                              isTop ? 'text-lg font-black text-red-600' : 'font-medium'
-                            }`}
-                          >
-                            {idx + 1}
-                          </td>
+                    {/* 選手名 */}
+                    <div
+                      className={`font-bold truncate leading-tight ${
+                        isTop ? 'text-sm' : 'text-xs'
+                      }`}
+                    >
+                      {item.athlete_name}
+                    </div>
 
-                          {/* 選手名 */}
-                          <td
-                            className={`px-3 py-3 font-semibold ${
-                              isTop ? 'text-lg text-gray-900' : ''
-                            }`}
-                          >
-                            {item.athlete_name}
-                            {isTop && (
-                              <span className="ml-2 inline-block px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full align-middle">
-                                NOW
-                              </span>
-                            )}
-                          </td>
+                    {/* 重量 */}
+                    <div
+                      className={`font-black tabular-nums mt-0.5 ${
+                        isTop ? 'text-lg' : 'text-sm'
+                      }`}
+                    >
+                      {item.declared_weight}
+                      <span className={`${isTop ? 'text-xs' : 'text-[10px]'}`}>kg</span>
+                    </div>
 
-                          {/* 所属 */}
-                          <td className="px-3 py-3 text-gray-600">
-                            {item.group_name}
-                          </td>
+                    {/* 試技回数 */}
+                    <div
+                      className={`text-[10px] mt-0.5 ${
+                        isTop ? 'text-red-100' : 'text-gray-400'
+                      }`}
+                    >
+                      {item.attempt_number}/3
+                    </div>
 
-                          {/* Lot */}
-                          <td className="px-3 py-3 text-center text-gray-500">
-                            {item.lot_number}
-                          </td>
-
-                          {/* 重量 */}
-                          <td
-                            className={`px-3 py-3 text-right tabular-nums font-bold ${
-                              isTop ? 'text-xl text-indigo-700' : ''
-                            }`}
-                          >
-                            {item.declared_weight}kg
-                          </td>
-
-                          {/* 試技回数 */}
-                          <td className="px-3 py-3 text-center">
-                            <span className="text-xs text-gray-500">
-                              {liftTypeLabel(item.lift_type)}
-                            </span>
-                            <br />
-                            <span className="font-bold">
-                              {item.attempt_number}/3
-                            </span>
-                          </td>
-
-                          {/* 操作 */}
-                          <td className="px-3 py-3 text-center">
-                            {isTop ? (
-                              <span className="text-xs text-gray-400">
-                                ↑ 上のボタンで操作
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => setCurrentAttempt(item.attempt_id)}
-                                className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition-colors"
-                              >
-                                進行中にする
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                    {/* NOW バッジ */}
+                    {isTop && (
+                      <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center">
+                        <span className="text-[8px] font-black text-red-700">NOW</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -720,18 +673,18 @@ export default function AdminPage() {
           animation: highlight-pulse 2s ease-in-out infinite;
         }
 
-        @keyframes row-fade-in {
+        @keyframes grid-fade-in {
           from {
             opacity: 0;
-            transform: translateY(-6px);
+            transform: scale(0.8);
           }
           to {
             opacity: 1;
-            transform: translateY(0);
+            transform: scale(1);
           }
         }
-        .animate-row-fade-in {
-          animation: row-fade-in 0.35s ease-out both;
+        .animate-grid-fade-in {
+          animation: grid-fade-in 0.3s ease-out both;
         }
       `}</style>
     </>
