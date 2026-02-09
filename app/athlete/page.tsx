@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useCompetitionStore } from '@/lib/store/competition-store';
-import { calculateWaitAttempts, buildAttemptQueue } from '@/lib/wait-counter';
+import { calculateWaitAttempts, buildAttemptQueue, liftTypeLabel, getCurrentLiftType } from '@/lib/wait-counter';
 import type { Competition, WaitCounterInfo } from '@/types';
 
 export default function AthletePage() {
@@ -177,7 +177,7 @@ export default function AthletePage() {
               {currentAttempt.declared_weight}kg
             </div>
             <div className="text-lg">
-              {currentAttempt.athlete_name} — {currentAttempt.lift_type}{' '}
+              {currentAttempt.athlete_name} — {liftTypeLabel(currentAttempt.lift_type)}{' '}
               {currentAttempt.attempt_number}回目
             </div>
           </div>
@@ -259,7 +259,7 @@ export default function AthletePage() {
                         {index + 1}. {item.athlete_name}
                       </div>
                       <div className="text-sm text-gray-600">
-                        {item.lift_type} {item.attempt_number}回目
+                        {liftTypeLabel(item.lift_type)} {item.attempt_number}回目
                         <span className="ml-2 text-gray-400">
                           Lot#{item.lot_number}
                         </span>

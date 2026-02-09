@@ -2,24 +2,47 @@ import type {
   Competition,
   Athlete,
   Attempt,
+  LiftType,
   AttemptQueueItem,
   WaitCounterInfo,
 } from '@/types';
 
 // ─────────────────────────────────────────────
+// ヘルパー: 種目名の日本語表示
+// ─────────────────────────────────────────────
+export function liftTypeLabel(lt: LiftType): string {
+  return lt === 'Snatch' ? 'スナッチ' : 'クリーン&ジャーク';
+}
+
+// ─────────────────────────────────────────────
+// ヘルパー: 現在のフェーズ(種目)を判定
+//   Snatch に pending が1つでもあれば → Snatch フェーズ
+//   なければ → Jerk (C&J) フェーズ
+// ─────────────────────────────────────────────
+export function getCurrentLiftType(attempts: Attempt[]): LiftType {
+  const hasPendingSnatch = attempts.some(
+    (a) => a.lift_type === 'Snatch' && a.result === 'pending'
+  );
+  return hasPendingSnatch ? 'Snatch' : 'Jerk';
+}
+
+// ─────────────────────────────────────────────
 // 1. 試技順ソート — バーベル・ローデッド法
+//    ★ 現在フェーズ(Snatch or Jerk)の pending のみ
 //    優先順位: 重量(軽い順) → 試技回数(少ない順) → 抽選番号(小さい順)
-//    ※ pending の試技のみをキューに入れる
 // ─────────────────────────────────────────────
 export function buildAttemptQueue(
   athletes: Athlete[],
   attempts: Attempt[]
 ): AttemptQueueItem[] {
+  const currentPhase = getCurrentLiftType(attempts);
   const queue: AttemptQueueItem[] = [];
 
   for (const athlete of athletes) {
     const athleteAttempts = attempts.filter(
-      (a) => a.athlete_id === athlete.id
+      (a) =>
+        a.athlete_id === athlete.id &&
+        a.lift_type === currentPhase
     );
 
     for (const attempt of athleteAttempts) {
@@ -56,6 +79,8 @@ export function buildAttemptQueue(
 // 2. 待機本数計算 (calculateWaitAttempts)
 //
 //    仕様:
+//      ★ 現在フェーズのキューのみ対象
+//      ★ キュー先頭の選手は 0本 待ち
 //      Targetより試技順が早い各Other【選手】についてループ。
 //      ① diff = Target.current_weight − Other.current_weight
 //      ② diff に基づき基本加算数を決定
@@ -64,10 +89,8 @@ export function buildAttemptQueue(
 //           diff >= zone_C → +1
 //           それ以外     → +0 (カウントしない)
 //      ③ Other の残り試技数 = 3 − attempt_number + 1
+//           ※ 同フェーズ(種目)内の残り本数
 //      ④ MIN(基本加算数, 残り試技数) を合計に加算
-//
-//      ★ 自分より重い選手、同重量で試技順が後の選手はカウントしない
-//        → キューで Target より前にいる選手のみ対象
 // ─────────────────────────────────────────────
 export function calculateWaitAttempts(
   targetAthleteId: string,
@@ -78,11 +101,13 @@ export function calculateWaitAttempts(
   const targetAthlete = athletes.find((a) => a.id === targetAthleteId);
   if (!targetAthlete) return null;
 
-  // Target の「次の pending 試技」を取得
-  const targetAttempts = attempts.filter(
-    (a) => a.athlete_id === targetAthleteId
+  const currentPhase = getCurrentLiftType(attempts);
+
+  // Target の現在フェーズの「次の pending 試技」を取得
+  const targetPhaseAttempts = attempts.filter(
+    (a) => a.athlete_id === targetAthleteId && a.lift_type === currentPhase
   );
-  const targetNextAttempt = getNextPendingAttempt(targetAttempts);
+  const targetNextAttempt = getNextPendingAttemptForPhase(targetPhaseAttempts);
 
   if (!targetNextAttempt) {
     return {
@@ -95,7 +120,7 @@ export function calculateWaitAttempts(
 
   const targetWeight = targetNextAttempt.declared_weight;
 
-  // 試技順キューを構築
+  // 試技順キュー（フェーズ内のみ）
   const queue = buildAttemptQueue(athletes, attempts);
 
   // Target のキュー内位置を特定
@@ -106,7 +131,7 @@ export function calculateWaitAttempts(
   );
 
   if (targetIndex <= 0) {
-    // 先頭 or 見つからない → 待ちゼロ
+    // ★ 先頭 (index === 0) → 0本待ち
     return {
       athlete_name: targetAthlete.name,
       current_weight: targetWeight,
@@ -136,11 +161,11 @@ export function calculateWaitAttempts(
     );
     if (!otherAthlete) continue;
 
-    // Other の「次の pending 試技」を正確に取得
-    const otherAttempts = attempts.filter(
-      (a) => a.athlete_id === queueItem.athlete_id
+    // Other の現在フェーズの「次の pending 試技」を正確に取得
+    const otherPhaseAttempts = attempts.filter(
+      (a) => a.athlete_id === queueItem.athlete_id && a.lift_type === currentPhase
     );
-    const otherNextAttempt = getNextPendingAttempt(otherAttempts);
+    const otherNextAttempt = getNextPendingAttemptForPhase(otherPhaseAttempts);
     if (!otherNextAttempt) continue;
 
     const otherWeight = otherNextAttempt.declared_weight;
@@ -161,7 +186,7 @@ export function calculateWaitAttempts(
       continue;
     }
 
-    // ③ Other の残り試技数: 3 − current_attempt + 1
+    // ③ Other の残り試技数 (同フェーズ内): 3 − attempt_number + 1
     const remaining = 3 - otherNextAttempt.attempt_number + 1;
 
     // ④ MIN(基本加算数, 残り試技数)
@@ -189,27 +214,21 @@ export function calculateWaitAttempts(
 // ─────────────────────────────────────────────
 
 /**
- * 選手の「次にやるべき pending 試技」を返す
- * Snatch → Jerk の順、同種目なら attempt_number 昇順
+ * 同一フェーズ(種目)内の「次にやるべき pending 試技」を返す
+ * attempt_number 昇順 (1→2→3)
  */
-function getNextPendingAttempt(attempts: Attempt[]): Attempt | null {
-  const pending = attempts
+function getNextPendingAttemptForPhase(phaseAttempts: Attempt[]): Attempt | null {
+  const pending = phaseAttempts
     .filter((a) => a.result === 'pending')
-    .sort((a, b) => {
-      // Snatch を先に
-      if (a.lift_type !== b.lift_type) {
-        return a.lift_type === 'Snatch' ? -1 : 1;
-      }
-      // 回数が少ない方を先に
-      return a.attempt_number - b.attempt_number;
-    });
+    .sort((a, b) => a.attempt_number - b.attempt_number);
 
   return pending[0] ?? null;
 }
 
 /**
  * 次の試技重量の検証
- * 成功 → +1kg 以上、失敗 → 同重量以上
+ *   成功 → +1kg 以上
+ *   失敗 → 同重量以上
  */
 export function validateNextWeight(
   currentWeight: number,
@@ -220,4 +239,29 @@ export function validateNextWeight(
     return nextWeight >= currentWeight + 1;
   }
   return nextWeight >= currentWeight;
+}
+
+/**
+ * 重量変更の検証（コール前の変更用）
+ *   1回目 → 下げることも可能（最低1kg）
+ *   2/3回目 → 同重量以上のみ
+ */
+export function validateWeightChange(
+  attemptNumber: 1 | 2 | 3,
+  currentWeight: number,
+  newWeight: number,
+  previousAttemptWeight?: number
+): { valid: boolean; minWeight: number } {
+  if (newWeight < 1) {
+    return { valid: false, minWeight: 1 };
+  }
+
+  if (attemptNumber === 1) {
+    // 1回目: 自由に変更可（1kg以上であればOK）
+    return { valid: newWeight >= 1, minWeight: 1 };
+  }
+
+  // 2/3回目: 前回の試技重量以上が必要
+  const min = previousAttemptWeight ?? currentWeight;
+  return { valid: newWeight >= min, minWeight: min };
 }

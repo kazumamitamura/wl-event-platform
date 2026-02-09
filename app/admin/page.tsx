@@ -6,7 +6,12 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { getCurrentProfile } from '@/lib/auth';
 import { useCompetitionStore } from '@/lib/store/competition-store';
-import { buildAttemptQueue, validateNextWeight } from '@/lib/wait-counter';
+import {
+  buildAttemptQueue,
+  getCurrentLiftType,
+  liftTypeLabel,
+  validateWeightChange,
+} from '@/lib/wait-counter';
 import type { Competition, AttemptQueueItem } from '@/types';
 
 // ═══════════════════════════════════════════
@@ -20,6 +25,7 @@ function WeightModal({
   attemptNumber,
   defaultWeight,
   minWeight,
+  allowDecrease,
   onConfirm,
   onCancel,
 }: {
@@ -30,6 +36,7 @@ function WeightModal({
   attemptNumber: number;
   defaultWeight: number;
   minWeight: number;
+  allowDecrease?: boolean;
   onConfirm: (weight: number) => void;
   onCancel: () => void;
 }) {
@@ -52,8 +59,24 @@ function WeightModal({
       setError(`${minWeight}kg 以上を入力してください`);
       return;
     }
+    if (weight < 1) {
+      setError('1kg 以上を入力してください');
+      return;
+    }
     onConfirm(weight);
   };
+
+  // モーダルの色分け
+  const isSuccess = title.includes('成功');
+  const isWeightChange = title.includes('重量変更');
+  const badgeColor = isSuccess
+    ? 'bg-green-100 text-green-800'
+    : isWeightChange
+    ? 'bg-blue-100 text-blue-800'
+    : 'bg-red-100 text-red-800';
+
+  // ラベル
+  const inputLabel = isWeightChange ? '変更後の重量 (kg)' : '次の申告重量 (kg)';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -63,13 +86,7 @@ function WeightModal({
       >
         {/* Header */}
         <div className="text-center">
-          <div
-            className={`inline-block px-4 py-1 rounded-full text-sm font-bold mb-3 ${
-              title.includes('成功')
-                ? 'bg-green-100 text-green-800'
-                : 'bg-red-100 text-red-800'
-            }`}
-          >
+          <div className={`inline-block px-4 py-1 rounded-full text-sm font-bold mb-3 ${badgeColor}`}>
             {title}
           </div>
           <div className="text-lg font-semibold text-gray-900">
@@ -78,12 +95,17 @@ function WeightModal({
           <div className="text-sm text-gray-500">
             {liftType} {attemptNumber}回目
           </div>
+          {allowDecrease && (
+            <div className="mt-2 text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-1.5 inline-block">
+              ※ 1回目のため重量の引き下げが可能です
+            </div>
+          )}
         </div>
 
         {/* Weight input */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            次の申告重量 (kg)
+            {inputLabel}
           </label>
           <div className="flex items-center gap-3">
             <button
@@ -151,12 +173,14 @@ export default function AdminPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalAttemptId, setModalAttemptId] = useState('');
+  const [modalMode, setModalMode] = useState<'result' | 'weightChange'>('result');
   const [modalResult, setModalResult] = useState<'success' | 'fail'>('success');
   const [modalAthleteName, setModalAthleteName] = useState('');
   const [modalLiftType, setModalLiftType] = useState('');
   const [modalAttemptNumber, setModalAttemptNumber] = useState(1);
   const [modalDefaultWeight, setModalDefaultWeight] = useState(0);
   const [modalMinWeight, setModalMinWeight] = useState(0);
+  const [modalAllowDecrease, setModalAllowDecrease] = useState(false);
 
   // リスト更新アニメ用カウンタ
   const [refreshKey, setRefreshKey] = useState(0);
@@ -238,7 +262,9 @@ export default function AdminPage() {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      supabase.removeChannel(ch);
+    };
   }, [selectedCompId, loadCompetitionData]);
 
   // ── Actions ─────────────────────────
@@ -254,34 +280,76 @@ export default function AdminPage() {
     if (q.length > 0) await setCurrentAttempt(q[0].attempt_id);
   };
 
-  /** 成功 / 失敗 → モーダルを開く */
+  /** 成功 / 失敗 → モーダルを開く（次の重量入力） */
   const openResultModal = (item: AttemptQueueItem, result: 'success' | 'fail') => {
     const curWeight = item.declared_weight;
     const isSuccess = result === 'success';
 
-    // この選手の同種目・次回試技が pending かを調べ、あれば重量変更先にする
-    const nextAttempt = attempts.find(
-      (a) =>
-        a.athlete_id === item.athlete_id &&
-        a.lift_type === item.lift_type &&
-        a.attempt_number === ((item.attempt_number + 1) as 1 | 2 | 3) &&
-        a.result === 'pending'
-    );
-
+    setModalMode('result');
     setModalResult(result);
     setModalAttemptId(item.attempt_id);
     setModalTitle(isSuccess ? '成功 (Good Lift)' : '失敗 (No Lift)');
     setModalAthleteName(item.athlete_name);
-    setModalLiftType(item.lift_type);
+    setModalLiftType(liftTypeLabel(item.lift_type));
     setModalAttemptNumber(item.attempt_number);
     setModalDefaultWeight(isSuccess ? curWeight + 1 : curWeight);
     setModalMinWeight(isSuccess ? curWeight + 1 : curWeight);
+    setModalAllowDecrease(false);
     setModalOpen(true);
   };
 
-  /** モーダル「確定」→ 結果を保存 + 次試技の重量を更新 → 次に進む */
+  /** 重量変更 → モーダルを開く（コール前の変更用） */
+  const openWeightChangeModal = (item: AttemptQueueItem) => {
+    const curWeight = item.declared_weight;
+    const isFirstAttempt = item.attempt_number === 1;
+
+    // 2/3回目の場合、前回試技の重量を取得
+    let minW = 1;
+    if (!isFirstAttempt) {
+      const prevAttempt = attempts.find(
+        (a) =>
+          a.athlete_id === item.athlete_id &&
+          a.lift_type === item.lift_type &&
+          a.attempt_number === item.attempt_number - 1
+      );
+      minW = prevAttempt ? prevAttempt.declared_weight : curWeight;
+    }
+
+    const validation = validateWeightChange(
+      item.attempt_number,
+      curWeight,
+      curWeight,
+      minW
+    );
+
+    setModalMode('weightChange');
+    setModalAttemptId(item.attempt_id);
+    setModalTitle('重量変更');
+    setModalAthleteName(item.athlete_name);
+    setModalLiftType(liftTypeLabel(item.lift_type));
+    setModalAttemptNumber(item.attempt_number);
+    setModalDefaultWeight(curWeight);
+    setModalMinWeight(validation.minWeight);
+    setModalAllowDecrease(isFirstAttempt);
+    setModalOpen(true);
+  };
+
+  /** モーダル「確定」 */
   const handleModalConfirm = async (newWeight: number) => {
     setModalOpen(false);
+
+    if (modalMode === 'weightChange') {
+      // ── 重量変更: 現在の試技の weight を直接更新 ──
+      await supabase
+        .from('wl_attempts')
+        .update({ declared_weight: newWeight })
+        .eq('id', modalAttemptId);
+
+      await loadCompetitionData(selectedCompId);
+      return;
+    }
+
+    // ── 結果記録 (success / fail) ──
 
     // 1. 結果を保存 & is_current を外す
     await supabase
@@ -289,7 +357,7 @@ export default function AdminPage() {
       .update({ result: modalResult, is_current: false })
       .eq('id', modalAttemptId);
 
-    // 2. 次の試技の重量を更新
+    // 2. 次の試技の重量を更新（同選手・同種目の次回）
     const currentItem = attempts.find((a) => a.id === modalAttemptId);
     if (currentItem) {
       const nextAttempt = attempts.find(
@@ -310,7 +378,6 @@ export default function AdminPage() {
     // 3. データ再読込 → 次のキュー先頭を進行中にする
     await loadCompetitionData(selectedCompId);
 
-    // 少し待ってから advanceToNext（データ反映を待つ）
     setTimeout(async () => {
       const freshAttempts = (
         await supabase
@@ -336,6 +403,9 @@ export default function AdminPage() {
 
   const topItem = queue.length > 0 ? queue[0] : null;
 
+  // 現在のフェーズ
+  const currentPhase = attempts.length > 0 ? getCurrentLiftType(attempts) : null;
+
   // ── Render ──────────────────────────
 
   if (loading)
@@ -358,6 +428,7 @@ export default function AdminPage() {
         attemptNumber={modalAttemptNumber}
         defaultWeight={modalDefaultWeight}
         minWeight={modalMinWeight}
+        allowDecrease={modalAllowDecrease}
         onConfirm={handleModalConfirm}
         onCancel={() => setModalOpen(false)}
       />
@@ -393,6 +464,17 @@ export default function AdminPage() {
             </select>
           </div>
 
+          {/* ── フェーズ表示 ─────────── */}
+          {currentPhase && selectedCompId && (
+            <div className={`p-4 rounded-xl text-center font-bold text-lg ${
+              currentPhase === 'Snatch'
+                ? 'bg-blue-100 text-blue-800 border-2 border-blue-300'
+                : 'bg-purple-100 text-purple-800 border-2 border-purple-300'
+            }`}>
+              現在の種目: {liftTypeLabel(currentPhase)}
+            </div>
+          )}
+
           {/* ── 現在の試技者カード（1番上をハイライト）──── */}
           {topItem && (
             <div className="relative bg-gradient-to-r from-yellow-50 to-orange-50 border-4 border-red-500 rounded-2xl shadow-lg p-6 md:p-8 animate-highlight-pulse">
@@ -409,7 +491,7 @@ export default function AdminPage() {
                   </div>
                   <div className="text-base md:text-lg text-gray-600 mt-1">
                     {topItem.group_name} ／ Lot#{topItem.lot_number} ／{' '}
-                    {topItem.lift_type} {topItem.attempt_number}回目
+                    {liftTypeLabel(topItem.lift_type)} {topItem.attempt_number}回目
                   </div>
                 </div>
 
@@ -421,18 +503,30 @@ export default function AdminPage() {
               </div>
 
               {/* アクションボタン */}
-              <div className="flex gap-4 mt-6">
+              <div className="flex flex-col gap-3 mt-6">
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => openResultModal(topItem, 'success')}
+                    className="flex-1 py-4 rounded-xl bg-green-500 hover:bg-green-600 active:scale-95 text-white text-xl font-bold shadow-lg transition-all"
+                  >
+                    ○ 成功
+                  </button>
+                  <button
+                    onClick={() => openResultModal(topItem, 'fail')}
+                    className="flex-1 py-4 rounded-xl bg-red-500 hover:bg-red-600 active:scale-95 text-white text-xl font-bold shadow-lg transition-all"
+                  >
+                    × 失敗
+                  </button>
+                </div>
+                {/* 重量変更ボタン */}
                 <button
-                  onClick={() => openResultModal(topItem, 'success')}
-                  className="flex-1 py-4 rounded-xl bg-green-500 hover:bg-green-600 active:scale-95 text-white text-xl font-bold shadow-lg transition-all"
+                  onClick={() => openWeightChangeModal(topItem)}
+                  className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-600 active:scale-95 text-white text-base font-bold shadow transition-all"
                 >
-                  ○ 成功 (Good Lift)
-                </button>
-                <button
-                  onClick={() => openResultModal(topItem, 'fail')}
-                  className="flex-1 py-4 rounded-xl bg-red-500 hover:bg-red-600 active:scale-95 text-white text-xl font-bold shadow-lg transition-all"
-                >
-                  × 失敗 (No Lift)
+                  ✏️ 重量変更（コール前）
+                  {topItem.attempt_number === 1 && (
+                    <span className="ml-2 text-sm opacity-80">※ 引き下げ可</span>
+                  )}
                 </button>
               </div>
             </div>
@@ -456,10 +550,13 @@ export default function AdminPage() {
           {/* ── 試技順テーブル ─────────── */}
           {currentCompetition && queue.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b bg-gray-50">
+              <div className="px-5 py-4 border-b bg-gray-50 flex items-center justify-between">
                 <h2 className="text-lg font-bold text-gray-900">
                   試技順リスト（バーベル・ローデッド法）
                 </h2>
+                <span className="text-sm text-gray-500">
+                  残り {queue.length} 本
+                </span>
               </div>
 
               <div className="overflow-x-auto">
@@ -551,7 +648,7 @@ export default function AdminPage() {
                           {/* 試技回数 */}
                           <td className="px-3 py-3 text-center">
                             <span className="text-xs text-gray-500">
-                              {item.lift_type}
+                              {liftTypeLabel(item.lift_type)}
                             </span>
                             <br />
                             <span className="font-bold">
@@ -585,7 +682,10 @@ export default function AdminPage() {
 
           {currentCompetition && queue.length === 0 && (
             <div className="bg-white p-10 rounded-xl shadow-sm text-center text-gray-400 text-lg">
-              試技データがありません
+              {currentPhase === 'Jerk' && attempts.some((a) => a.lift_type === 'Jerk' && a.result !== 'pending')
+                ? '全試技が終了しました'
+                : '試技データがありません'
+              }
             </div>
           )}
         </div>
