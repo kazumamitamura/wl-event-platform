@@ -1,10 +1,14 @@
 -- ============================================
--- Cleanup Script v2
+-- Cleanup Script v3
 -- 全データを削除してクリーンな状態にします
 -- ⚠️ 本番環境では絶対に実行しないでください ⚠️
+--
+-- DROP TABLE ... CASCADE で
+-- ポリシー / トリガー / インデックスは自動的に削除されるため
+-- 個別 DROP POLICY は不要です。
 -- ============================================
 
--- Realtime パブリケーションから削除
+-- Realtime パブリケーションから削除 (テーブルが無くても安全)
 DO $$
 BEGIN
   IF EXISTS (
@@ -16,20 +20,7 @@ BEGIN
 END
 $$;
 
--- 旧ポリシー名を削除 (v1 時代のもの)
-DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can view their own logs" ON usage_logs;
-DROP POLICY IF EXISTS "Users can insert their own logs" ON usage_logs;
-DROP POLICY IF EXISTS "Users can update their own logs" ON usage_logs;
-DROP POLICY IF EXISTS "Everyone can view competitions" ON competitions;
-DROP POLICY IF EXISTS "Only admins can manage competitions" ON competitions;
-DROP POLICY IF EXISTS "Everyone can view athletes" ON athletes;
-DROP POLICY IF EXISTS "Only admins can manage athletes" ON athletes;
-DROP POLICY IF EXISTS "Everyone can view attempts" ON attempts;
-DROP POLICY IF EXISTS "Only admins can manage attempts" ON attempts;
-
--- テーブル削除 (FK 依存順)
+-- テーブル削除 (CASCADE で依存オブジェクトも全て削除)
 DROP TABLE IF EXISTS attempts CASCADE;
 DROP TABLE IF EXISTS athletes CASCADE;
 DROP TABLE IF EXISTS competitions CASCADE;

@@ -88,13 +88,13 @@ export interface AttemptQueueItem {
   attempt_id: string;
   athlete_id: string;
   athlete_name: string;
+  group_name: string;
   lot_number: number;
   lift_type: LiftType;
   attempt_number: 1 | 2 | 3;
   declared_weight: number;
   result: AttemptResult;
   is_current: boolean;
-  priority_score: number; // For sorting
 }
 
 export interface WaitCounterInfo {

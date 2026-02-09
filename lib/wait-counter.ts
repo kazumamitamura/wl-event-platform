@@ -28,13 +28,13 @@ export function buildAttemptQueue(
           attempt_id: attempt.id,
           athlete_id: athlete.id,
           athlete_name: athlete.name,
+          group_name: athlete.group_name,
           lot_number: athlete.lot_number,
           lift_type: attempt.lift_type,
           attempt_number: attempt.attempt_number,
           declared_weight: attempt.declared_weight,
           result: attempt.result,
           is_current: attempt.is_current,
-          priority_score: 0,
         });
       }
     }
