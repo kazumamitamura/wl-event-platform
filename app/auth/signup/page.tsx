@@ -39,10 +39,8 @@ export default function SignUpPage() {
       });
 
       if (result.needsConfirmation) {
-        // メール確認が必要
         setSuccessMessage(result.message);
       } else {
-        // 即時ログイン成功
         router.push('/');
         router.refresh();
       }
@@ -63,32 +61,48 @@ export default function SignUpPage() {
 
         {/* 成功メッセージ */}
         {successMessage && (
-          <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-4 rounded-lg text-center space-y-2">
-            <p className="font-semibold">{successMessage}</p>
-            <Link
-              href="/auth/signin"
-              className="inline-block mt-2 text-indigo-600 hover:text-indigo-700 font-semibold underline"
-            >
-              ログインページへ
-            </Link>
+          <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-4 rounded-lg space-y-3">
+            <p className="font-semibold whitespace-pre-line">{successMessage}</p>
+            <div className="flex flex-col gap-2 mt-3">
+              <Link
+                href="/auth/signin"
+                className="block text-center py-2 px-4 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
+              >
+                ログインページへ
+              </Link>
+            </div>
           </div>
         )}
 
         {/* エラーメッセージ */}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg whitespace-pre-line">
-            {error}
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg space-y-3">
+            <p className="whitespace-pre-line">{error}</p>
+            {/* 既に登録済みの場合の誘導リンク */}
+            {error.includes('既に登録') && (
+              <div className="flex flex-col gap-2 pt-2 border-t border-red-200">
+                <Link
+                  href="/auth/signin"
+                  className="block text-center py-2 px-4 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors"
+                >
+                  ログインページへ
+                </Link>
+                <Link
+                  href="/auth/forgot-password"
+                  className="block text-center py-2 px-4 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition-colors"
+                >
+                  パスワードリセット
+                </Link>
+              </div>
+            )}
           </div>
         )}
 
-        {/* 成功していなければフォームを表示 */}
+        {/* フォーム（成功メッセージが表示されていない場合のみ） */}
         {!successMessage && (
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label
-                htmlFor="fullName"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
+              <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
                 氏名
               </label>
               <input
@@ -103,10 +117,7 @@ export default function SignUpPage() {
             </div>
 
             <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                 メールアドレス
               </label>
               <input
@@ -121,10 +132,7 @@ export default function SignUpPage() {
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                 パスワード
               </label>
               <input
@@ -137,16 +145,11 @@ export default function SignUpPage() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 placeholder="6文字以上"
               />
-              <p className="mt-1 text-xs text-gray-500">
-                6文字以上で入力してください
-              </p>
+              <p className="mt-1 text-xs text-gray-500">6文字以上で入力してください</p>
             </div>
 
             <div>
-              <label
-                htmlFor="category"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
+              <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
                 カテゴリ
               </label>
               <select
@@ -176,19 +179,13 @@ export default function SignUpPage() {
 
         <div className="text-center space-y-2">
           <p className="text-gray-600">すでにアカウントをお持ちの方は</p>
-          <Link
-            href="/auth/signin"
-            className="block text-indigo-600 hover:text-indigo-700 font-semibold"
-          >
+          <Link href="/auth/signin" className="block text-indigo-600 hover:text-indigo-700 font-semibold">
             ログインはこちら
           </Link>
         </div>
 
         <div className="text-center">
-          <Link
-            href="/"
-            className="text-gray-500 hover:text-gray-700 text-sm"
-          >
+          <Link href="/" className="text-gray-500 hover:text-gray-700 text-sm">
             ← ホームに戻る
           </Link>
         </div>

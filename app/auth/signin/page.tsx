@@ -44,10 +44,7 @@ export default function SignInPage() {
           )}
 
           <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
               メールアドレス
             </label>
             <input
@@ -62,10 +59,7 @@ export default function SignInPage() {
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
               パスワード
             </label>
             <input
@@ -88,21 +82,25 @@ export default function SignInPage() {
           </button>
         </form>
 
+        {/* パスワードリセット */}
+        <div className="text-center">
+          <Link
+            href="/auth/forgot-password"
+            className="text-sm text-gray-500 hover:text-indigo-600 underline"
+          >
+            パスワードをお忘れの場合
+          </Link>
+        </div>
+
         <div className="text-center space-y-2">
           <p className="text-gray-600">アカウントをお持ちでない方は</p>
-          <Link
-            href="/auth/signup"
-            className="block text-indigo-600 hover:text-indigo-700 font-semibold"
-          >
+          <Link href="/auth/signup" className="block text-indigo-600 hover:text-indigo-700 font-semibold">
             新規登録はこちら
           </Link>
         </div>
 
         <div className="text-center">
-          <Link
-            href="/"
-            className="text-gray-500 hover:text-gray-700 text-sm"
-          >
+          <Link href="/" className="text-gray-500 hover:text-gray-700 text-sm">
             ← ホームに戻る
           </Link>
         </div>
