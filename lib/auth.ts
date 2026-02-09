@@ -159,7 +159,7 @@ export async function getCurrentProfile() {
   if (!user) return null;
 
   const { data, error } = await supabase
-    .from('profiles')
+    .from('wl_profiles')
     .select('*')
     .eq('id', user.id)
     .single();
@@ -173,7 +173,7 @@ async function logUserLogin(userId: string) {
   const deviceInfo =
     typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown';
 
-  await supabase.from('usage_logs').insert({
+  await supabase.from('wl_usage_logs').insert({
     user_id: userId,
     device_info: deviceInfo,
   });
@@ -181,7 +181,7 @@ async function logUserLogin(userId: string) {
 
 async function logUserLogout(userId: string) {
   const { data: logs } = await supabase
-    .from('usage_logs')
+    .from('wl_usage_logs')
     .select('*')
     .eq('user_id', userId)
     .is('logout_at', null)
@@ -190,7 +190,7 @@ async function logUserLogout(userId: string) {
 
   if (logs && logs.length > 0) {
     await supabase
-      .from('usage_logs')
+      .from('wl_usage_logs')
       .update({ logout_at: new Date().toISOString() })
       .eq('id', logs[0].id);
   }

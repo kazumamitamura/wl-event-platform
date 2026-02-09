@@ -10,7 +10,7 @@ export async function POST() {
   if (user) {
     // Find the latest login without logout
     const { data: logs } = await supabase
-      .from('usage_logs')
+      .from('wl_usage_logs')
       .select('*')
       .eq('user_id', user.id)
       .is('logout_at', null)
@@ -19,7 +19,7 @@ export async function POST() {
 
     if (logs && logs.length > 0) {
       await supabase
-        .from('usage_logs')
+        .from('wl_usage_logs')
         .update({ logout_at: new Date().toISOString() })
         .eq('id', logs[0].id);
     }

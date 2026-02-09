@@ -193,7 +193,7 @@ export default function AdminPage() {
   // ── Data ────────────────────────────
   const loadCompetitions = async () => {
     const { data } = await supabase
-      .from('competitions')
+      .from('wl_competitions')
       .select('*')
       .order('date', { ascending: false });
     if (data) setCompetitions(data);
@@ -202,21 +202,21 @@ export default function AdminPage() {
   const loadCompetitionData = useCallback(
     async (compId: string) => {
       const { data: comp } = await supabase
-        .from('competitions')
+        .from('wl_competitions')
         .select('*')
         .eq('id', compId)
         .single();
       if (comp) setCompetition(comp);
 
       const { data: aths } = await supabase
-        .from('athletes')
+        .from('wl_athletes')
         .select('*')
         .eq('competition_id', compId)
         .order('lot_number');
       if (aths) setAthletes(aths);
 
       const { data: atts } = await supabase
-        .from('attempts')
+        .from('wl_attempts')
         .select('*')
         .in('athlete_id', aths?.map((a) => a.id) ?? []);
       if (atts) setAttempts(atts);
@@ -233,7 +233,7 @@ export default function AdminPage() {
 
     const ch = supabase
       .channel(`admin-${selectedCompId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempts' }, () =>
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wl_attempts' }, () =>
         loadCompetitionData(selectedCompId)
       )
       .subscribe();
@@ -245,8 +245,8 @@ export default function AdminPage() {
 
   const setCurrentAttempt = async (attemptId: string) => {
     const ids = attempts.map((a) => a.id);
-    await supabase.from('attempts').update({ is_current: false }).in('id', ids);
-    await supabase.from('attempts').update({ is_current: true }).eq('id', attemptId);
+    await supabase.from('wl_attempts').update({ is_current: false }).in('id', ids);
+    await supabase.from('wl_attempts').update({ is_current: true }).eq('id', attemptId);
   };
 
   const advanceToNext = async () => {
@@ -285,7 +285,7 @@ export default function AdminPage() {
 
     // 1. 結果を保存 & is_current を外す
     await supabase
-      .from('attempts')
+      .from('wl_attempts')
       .update({ result: modalResult, is_current: false })
       .eq('id', modalAttemptId);
 
@@ -301,7 +301,7 @@ export default function AdminPage() {
       );
       if (nextAttempt) {
         await supabase
-          .from('attempts')
+          .from('wl_attempts')
           .update({ declared_weight: newWeight })
           .eq('id', nextAttempt.id);
       }
@@ -314,7 +314,7 @@ export default function AdminPage() {
     setTimeout(async () => {
       const freshAttempts = (
         await supabase
-          .from('attempts')
+          .from('wl_attempts')
           .select('*')
           .in('athlete_id', athletes.map((a) => a.id))
       ).data;

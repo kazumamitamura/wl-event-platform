@@ -38,7 +38,7 @@ export function useAuth() {
 
   const loadProfile = async (userId: string) => {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('wl_profiles')
       .select('*')
       .eq('id', userId)
       .single();

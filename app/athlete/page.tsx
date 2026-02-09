@@ -31,7 +31,7 @@ export default function AthletePage() {
 
   const loadCompetitions = async () => {
     const { data } = await supabase
-      .from('competitions')
+      .from('wl_competitions')
       .select('*')
       .in('status', ['active', 'upcoming'])
       .order('date', { ascending: false });
@@ -42,21 +42,21 @@ export default function AthletePage() {
   const loadCompetitionData = useCallback(
     async (compId: string) => {
       const { data: comp } = await supabase
-        .from('competitions')
+        .from('wl_competitions')
         .select('*')
         .eq('id', compId)
         .single();
       if (comp) setCompetition(comp);
 
       const { data: athletesData } = await supabase
-        .from('athletes')
+        .from('wl_athletes')
         .select('*')
         .eq('competition_id', compId)
         .order('name');
       if (athletesData) setAthletes(athletesData);
 
       const { data: attemptsData } = await supabase
-        .from('attempts')
+        .from('wl_attempts')
         .select('*')
         .in('athlete_id', athletesData?.map((a) => a.id) ?? []);
       if (attemptsData) setAttempts(attemptsData);
@@ -74,7 +74,7 @@ export default function AthletePage() {
       .channel(`athlete-${selectedCompId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'attempts' },
+        { event: '*', schema: 'public', table: 'wl_attempts' },
         () => loadCompetitionData(selectedCompId)
       )
       .subscribe();

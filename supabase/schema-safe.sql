@@ -1,15 +1,15 @@
 -- ============================================
--- ウエイトリフティング競技運営プラットフォーム
--- Database Schema (Safe Version - IF NOT EXISTS)
--- v2: RLS 修正 + Realtime 有効化
+-- WL Event Platform — Schema (wl_ prefix)
+-- 他アプリと同じ Supabase DB で共存するため
+-- 全テーブルに wl_ プレフィックスを使用
 -- ============================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================
--- 1. profiles
+-- 1. wl_profiles
 -- ============================================
-CREATE TABLE IF NOT EXISTS profiles (
+CREATE TABLE IF NOT EXISTS wl_profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
@@ -17,49 +17,46 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wl_profiles ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "profiles_select_own" ON profiles;
-CREATE POLICY "profiles_select_own"
-  ON profiles FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "wl_profiles_select_own" ON wl_profiles;
+CREATE POLICY "wl_profiles_select_own"
+  ON wl_profiles FOR SELECT USING (auth.uid() = id);
 
-DROP POLICY IF EXISTS "profiles_update_own" ON profiles;
-CREATE POLICY "profiles_update_own"
-  ON profiles FOR UPDATE USING (auth.uid() = id);
-
--- handle_new_user (SECURITY DEFINER) が INSERT するので
--- INSERT ポリシーは不要（RLS バイパス）
+DROP POLICY IF EXISTS "wl_profiles_update_own" ON wl_profiles;
+CREATE POLICY "wl_profiles_update_own"
+  ON wl_profiles FOR UPDATE USING (auth.uid() = id);
 
 -- ============================================
--- 2. usage_logs
+-- 2. wl_usage_logs
 -- ============================================
-CREATE TABLE IF NOT EXISTS usage_logs (
+CREATE TABLE IF NOT EXISTS wl_usage_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES wl_profiles(id) ON DELETE CASCADE,
   login_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   logout_at TIMESTAMP WITH TIME ZONE,
   device_info TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wl_usage_logs ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "usage_logs_select_own" ON usage_logs;
-CREATE POLICY "usage_logs_select_own"
-  ON usage_logs FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "wl_usage_logs_select_own" ON wl_usage_logs;
+CREATE POLICY "wl_usage_logs_select_own"
+  ON wl_usage_logs FOR SELECT USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "usage_logs_insert_own" ON usage_logs;
-CREATE POLICY "usage_logs_insert_own"
-  ON usage_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "wl_usage_logs_insert_own" ON wl_usage_logs;
+CREATE POLICY "wl_usage_logs_insert_own"
+  ON wl_usage_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "usage_logs_update_own" ON usage_logs;
-CREATE POLICY "usage_logs_update_own"
-  ON usage_logs FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "wl_usage_logs_update_own" ON wl_usage_logs;
+CREATE POLICY "wl_usage_logs_update_own"
+  ON wl_usage_logs FOR UPDATE USING (auth.uid() = user_id);
 
 -- ============================================
--- 3. competitions
+-- 3. wl_competitions
 -- ============================================
-CREATE TABLE IF NOT EXISTS competitions (
+CREATE TABLE IF NOT EXISTS wl_competitions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   date DATE NOT NULL,
@@ -71,38 +68,36 @@ CREATE TABLE IF NOT EXISTS competitions (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-ALTER TABLE competitions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wl_competitions ENABLE ROW LEVEL SECURITY;
 
--- 全員が閲覧可能
-DROP POLICY IF EXISTS "competitions_select_all" ON competitions;
-CREATE POLICY "competitions_select_all"
-  ON competitions FOR SELECT USING (true);
+DROP POLICY IF EXISTS "wl_competitions_select_all" ON wl_competitions;
+CREATE POLICY "wl_competitions_select_all"
+  ON wl_competitions FOR SELECT USING (true);
 
--- 運営のみ INSERT/UPDATE/DELETE
-DROP POLICY IF EXISTS "competitions_insert_admin" ON competitions;
-CREATE POLICY "competitions_insert_admin"
-  ON competitions FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+DROP POLICY IF EXISTS "wl_competitions_insert_admin" ON wl_competitions;
+CREATE POLICY "wl_competitions_insert_admin"
+  ON wl_competitions FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM wl_profiles WHERE id = auth.uid() AND category = '運営')
   );
 
-DROP POLICY IF EXISTS "competitions_update_admin" ON competitions;
-CREATE POLICY "competitions_update_admin"
-  ON competitions FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+DROP POLICY IF EXISTS "wl_competitions_update_admin" ON wl_competitions;
+CREATE POLICY "wl_competitions_update_admin"
+  ON wl_competitions FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM wl_profiles WHERE id = auth.uid() AND category = '運営')
   );
 
-DROP POLICY IF EXISTS "competitions_delete_admin" ON competitions;
-CREATE POLICY "competitions_delete_admin"
-  ON competitions FOR DELETE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+DROP POLICY IF EXISTS "wl_competitions_delete_admin" ON wl_competitions;
+CREATE POLICY "wl_competitions_delete_admin"
+  ON wl_competitions FOR DELETE USING (
+    EXISTS (SELECT 1 FROM wl_profiles WHERE id = auth.uid() AND category = '運営')
   );
 
 -- ============================================
--- 4. athletes
+-- 4. wl_athletes
 -- ============================================
-CREATE TABLE IF NOT EXISTS athletes (
+CREATE TABLE IF NOT EXISTS wl_athletes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  competition_id UUID REFERENCES competitions(id) ON DELETE CASCADE,
+  competition_id UUID REFERENCES wl_competitions(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   body_weight DECIMAL(5,2) NOT NULL,
   lot_number INTEGER NOT NULL,
@@ -114,36 +109,36 @@ CREATE TABLE IF NOT EXISTS athletes (
   UNIQUE(competition_id, lot_number)
 );
 
-ALTER TABLE athletes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wl_athletes ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "athletes_select_all" ON athletes;
-CREATE POLICY "athletes_select_all"
-  ON athletes FOR SELECT USING (true);
+DROP POLICY IF EXISTS "wl_athletes_select_all" ON wl_athletes;
+CREATE POLICY "wl_athletes_select_all"
+  ON wl_athletes FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "athletes_insert_admin" ON athletes;
-CREATE POLICY "athletes_insert_admin"
-  ON athletes FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+DROP POLICY IF EXISTS "wl_athletes_insert_admin" ON wl_athletes;
+CREATE POLICY "wl_athletes_insert_admin"
+  ON wl_athletes FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM wl_profiles WHERE id = auth.uid() AND category = '運営')
   );
 
-DROP POLICY IF EXISTS "athletes_update_admin" ON athletes;
-CREATE POLICY "athletes_update_admin"
-  ON athletes FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+DROP POLICY IF EXISTS "wl_athletes_update_admin" ON wl_athletes;
+CREATE POLICY "wl_athletes_update_admin"
+  ON wl_athletes FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM wl_profiles WHERE id = auth.uid() AND category = '運営')
   );
 
-DROP POLICY IF EXISTS "athletes_delete_admin" ON athletes;
-CREATE POLICY "athletes_delete_admin"
-  ON athletes FOR DELETE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+DROP POLICY IF EXISTS "wl_athletes_delete_admin" ON wl_athletes;
+CREATE POLICY "wl_athletes_delete_admin"
+  ON wl_athletes FOR DELETE USING (
+    EXISTS (SELECT 1 FROM wl_profiles WHERE id = auth.uid() AND category = '運営')
   );
 
 -- ============================================
--- 5. attempts
+-- 5. wl_attempts
 -- ============================================
-CREATE TABLE IF NOT EXISTS attempts (
+CREATE TABLE IF NOT EXISTS wl_attempts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  athlete_id UUID REFERENCES athletes(id) ON DELETE CASCADE,
+  athlete_id UUID REFERENCES wl_athletes(id) ON DELETE CASCADE,
   lift_type TEXT NOT NULL CHECK (lift_type IN ('Snatch', 'Jerk')),
   attempt_number INTEGER NOT NULL CHECK (attempt_number IN (1, 2, 3)),
   declared_weight INTEGER NOT NULL,
@@ -154,32 +149,32 @@ CREATE TABLE IF NOT EXISTS attempts (
   UNIQUE(athlete_id, lift_type, attempt_number)
 );
 
-ALTER TABLE attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wl_attempts ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "attempts_select_all" ON attempts;
-CREATE POLICY "attempts_select_all"
-  ON attempts FOR SELECT USING (true);
+DROP POLICY IF EXISTS "wl_attempts_select_all" ON wl_attempts;
+CREATE POLICY "wl_attempts_select_all"
+  ON wl_attempts FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "attempts_insert_admin" ON attempts;
-CREATE POLICY "attempts_insert_admin"
-  ON attempts FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+DROP POLICY IF EXISTS "wl_attempts_insert_admin" ON wl_attempts;
+CREATE POLICY "wl_attempts_insert_admin"
+  ON wl_attempts FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM wl_profiles WHERE id = auth.uid() AND category = '運営')
   );
 
-DROP POLICY IF EXISTS "attempts_update_admin" ON attempts;
-CREATE POLICY "attempts_update_admin"
-  ON attempts FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+DROP POLICY IF EXISTS "wl_attempts_update_admin" ON wl_attempts;
+CREATE POLICY "wl_attempts_update_admin"
+  ON wl_attempts FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM wl_profiles WHERE id = auth.uid() AND category = '運営')
   );
 
-DROP POLICY IF EXISTS "attempts_delete_admin" ON attempts;
-CREATE POLICY "attempts_delete_admin"
-  ON attempts FOR DELETE USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND category = '運営')
+DROP POLICY IF EXISTS "wl_attempts_delete_admin" ON wl_attempts;
+CREATE POLICY "wl_attempts_delete_admin"
+  ON wl_attempts FOR DELETE USING (
+    EXISTS (SELECT 1 FROM wl_profiles WHERE id = auth.uid() AND category = '運営')
   );
 
 -- ============================================
--- Triggers: updated_at 自動更新
+-- Triggers: updated_at
 -- ============================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -189,28 +184,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS update_competitions_updated_at ON competitions;
-CREATE TRIGGER update_competitions_updated_at
-  BEFORE UPDATE ON competitions FOR EACH ROW
+DROP TRIGGER IF EXISTS wl_update_competitions ON wl_competitions;
+CREATE TRIGGER wl_update_competitions
+  BEFORE UPDATE ON wl_competitions FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_athletes_updated_at ON athletes;
-CREATE TRIGGER update_athletes_updated_at
-  BEFORE UPDATE ON athletes FOR EACH ROW
+DROP TRIGGER IF EXISTS wl_update_athletes ON wl_athletes;
+CREATE TRIGGER wl_update_athletes
+  BEFORE UPDATE ON wl_athletes FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_attempts_updated_at ON attempts;
-CREATE TRIGGER update_attempts_updated_at
-  BEFORE UPDATE ON attempts FOR EACH ROW
+DROP TRIGGER IF EXISTS wl_update_attempts ON wl_attempts;
+CREATE TRIGGER wl_update_attempts
+  BEFORE UPDATE ON wl_attempts FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- Trigger: Auth ユーザー作成時にプロフィール自動生成
+-- Trigger: Auth → wl_profiles 自動作成
+-- ★ 関数名・トリガー名を wl_ 固有にして他アプリと衝突しない
 -- ============================================
-CREATE OR REPLACE FUNCTION public.handle_new_user()
+CREATE OR REPLACE FUNCTION public.wl_handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, full_name, category)
+  INSERT INTO public.wl_profiles (id, email, full_name, category)
   VALUES (
     NEW.id,
     NEW.email,
@@ -221,35 +217,31 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS wl_on_auth_user_created ON auth.users;
+CREATE TRIGGER wl_on_auth_user_created
   AFTER INSERT ON auth.users FOR EACH ROW
-  EXECUTE FUNCTION public.handle_new_user();
+  EXECUTE FUNCTION public.wl_handle_new_user();
 
 -- ============================================
 -- Indexes
 -- ============================================
-CREATE INDEX IF NOT EXISTS idx_athletes_competition ON athletes(competition_id);
-CREATE INDEX IF NOT EXISTS idx_attempts_athlete ON attempts(athlete_id);
-CREATE INDEX IF NOT EXISTS idx_attempts_is_current ON attempts(is_current) WHERE is_current = TRUE;
-CREATE INDEX IF NOT EXISTS idx_usage_logs_user ON usage_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_wl_athletes_comp ON wl_athletes(competition_id);
+CREATE INDEX IF NOT EXISTS idx_wl_attempts_ath ON wl_attempts(athlete_id);
+CREATE INDEX IF NOT EXISTS idx_wl_attempts_cur ON wl_attempts(is_current) WHERE is_current = TRUE;
+CREATE INDEX IF NOT EXISTS idx_wl_usage_logs_usr ON wl_usage_logs(user_id);
 
 -- ============================================
--- Realtime 有効化 (attempts テーブルの変更を配信)
+-- Realtime
 -- ============================================
 DO $$
 BEGIN
-  -- attempts テーブルを Realtime パブリケーションに追加
   IF NOT EXISTS (
-    SELECT 1
-    FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime'
-      AND tablename = 'attempts'
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'wl_attempts'
   ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE attempts;
+    ALTER PUBLICATION supabase_realtime ADD TABLE wl_attempts;
   END IF;
 END
 $$;
 
--- ============================================
-SELECT 'Schema v2 setup completed successfully!' as message;
+SELECT 'WL schema setup completed! (wl_ prefix)' as message;
