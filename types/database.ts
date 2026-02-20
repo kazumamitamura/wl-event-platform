@@ -103,10 +103,15 @@ export interface AttemptQueueItem {
 export interface WaitCounterInfo {
   athlete_name: string;
   current_weight: number;
-  wait_count: number; // あと何本待ちか
+  wait_count: number;
+  queue_position: number;
+  is_next: boolean;
+  zones_used: { z3: number; z2: number; z1: number; is_custom: boolean };
   next_athletes: {
     name: string;
     weight: number;
+    diff: number;
+    remaining: number;
     predicted_attempts: number;
   }[];
 }

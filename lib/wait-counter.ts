@@ -103,6 +103,16 @@ export function calculateWaitAttempts(
 
   const currentPhase = getCurrentLiftType(attempts);
 
+  // 使用する Zone 設定を決定（個別 > 大会デフォルト）
+  const z3 = targetAthlete.custom_zone_3 ?? competition.config_wait_zone_a;
+  const z2 = targetAthlete.custom_zone_2 ?? competition.config_wait_zone_b;
+  const z1 = targetAthlete.custom_zone_1 ?? competition.config_wait_zone_c;
+  const isCustom =
+    targetAthlete.custom_zone_3 !== null ||
+    targetAthlete.custom_zone_2 !== null ||
+    targetAthlete.custom_zone_1 !== null;
+  const zonesUsed = { z3, z2, z1, is_custom: isCustom };
+
   // Target の現在フェーズの「次の pending 試技」を取得
   const targetPhaseAttempts = attempts.filter(
     (a) => a.athlete_id === targetAthleteId && a.lift_type === currentPhase
@@ -114,6 +124,9 @@ export function calculateWaitAttempts(
       athlete_name: targetAthlete.name,
       current_weight: 0,
       wait_count: 0,
+      queue_position: -1,
+      is_next: false,
+      zones_used: zonesUsed,
       next_athletes: [],
     };
   }
@@ -131,11 +144,13 @@ export function calculateWaitAttempts(
   );
 
   if (targetIndex <= 0) {
-    // ★ 先頭 (index === 0) → 0本待ち
     return {
       athlete_name: targetAthlete.name,
       current_weight: targetWeight,
       wait_count: 0,
+      queue_position: targetIndex === 0 ? 1 : 0,
+      is_next: targetIndex === 0,
+      zones_used: zonesUsed,
       next_athletes: [],
     };
   }
@@ -143,14 +158,9 @@ export function calculateWaitAttempts(
   // Target より前にいるキュー項目を取り出す
   const itemsBefore = queue.slice(0, targetIndex);
 
-  // ★ 選手単位で重複排除 — 各選手は 1 回だけ計算する
   const seenAthleteIds = new Set<string>();
   let totalWait = 0;
-  const nextAthletesInfo: {
-    name: string;
-    weight: number;
-    predicted_attempts: number;
-  }[] = [];
+  const nextAthletesInfo: WaitCounterInfo['next_athletes'] = [];
 
   for (const queueItem of itemsBefore) {
     if (seenAthleteIds.has(queueItem.athlete_id)) continue;
@@ -161,7 +171,6 @@ export function calculateWaitAttempts(
     );
     if (!otherAthlete) continue;
 
-    // Other の現在フェーズの「次の pending 試技」を正確に取得
     const otherPhaseAttempts = attempts.filter(
       (a) => a.athlete_id === queueItem.athlete_id && a.lift_type === currentPhase
     );
@@ -169,14 +178,7 @@ export function calculateWaitAttempts(
     if (!otherNextAttempt) continue;
 
     const otherWeight = otherNextAttempt.declared_weight;
-
-    // ① 重量差
     const diff = targetWeight - otherWeight;
-
-    // ② 基本加算数 — 選手個別設定があれば優先、なければ大会設定
-    const z3 = targetAthlete.custom_zone_3 ?? competition.config_wait_zone_a;
-    const z2 = targetAthlete.custom_zone_2 ?? competition.config_wait_zone_b;
-    const z1 = targetAthlete.custom_zone_1 ?? competition.config_wait_zone_c;
 
     let baseAddition = 0;
     if (diff >= z3) {
@@ -189,10 +191,7 @@ export function calculateWaitAttempts(
       continue;
     }
 
-    // ③ Other の残り試技数 (同フェーズ内): 3 − attempt_number + 1
     const remaining = 3 - otherNextAttempt.attempt_number + 1;
-
-    // ④ MIN(基本加算数, 残り試技数)
     const finalAddition = Math.min(baseAddition, remaining);
 
     totalWait += finalAddition;
@@ -200,6 +199,8 @@ export function calculateWaitAttempts(
     nextAthletesInfo.push({
       name: otherAthlete.name,
       weight: otherWeight,
+      diff,
+      remaining,
       predicted_attempts: finalAddition,
     });
   }
@@ -208,6 +209,9 @@ export function calculateWaitAttempts(
     athlete_name: targetAthlete.name,
     current_weight: targetWeight,
     wait_count: totalWait,
+    queue_position: targetIndex + 1,
+    is_next: targetIndex === 0,
+    zones_used: zonesUsed,
     next_athletes: nextAthletesInfo,
   };
 }

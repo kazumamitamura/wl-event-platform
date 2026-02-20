@@ -84,18 +84,7 @@ export default function WaitZoneSettingsForm({ athlete, onSaved }: Props) {
   ];
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-lg">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-gray-900">
-          待ち本数の個別設定
-        </h3>
-        {hasCustom && (
-          <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full font-medium">
-            カスタム設定中
-          </span>
-        )}
-      </div>
-
+    <div>
       <p className="text-sm text-gray-500 mb-5">
         自分の重量と前の選手の重量差が下記の値以上なら、その本数分待ちとしてカウントします。
       </p>
@@ -147,6 +136,17 @@ export default function WaitZoneSettingsForm({ athlete, onSaved }: Props) {
           {saving ? '保存中...' : '完了'}
         </button>
       </div>
+    </div>
+  );
+}
+
+export function WaitZoneSettingsFormStandalone({ athlete, onSaved }: Props) {
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-lg">
+      <h3 className="text-lg font-bold text-gray-900 mb-2">
+        待ち本数の個別設定
+      </h3>
+      <WaitZoneSettingsForm athlete={athlete} onSaved={onSaved} />
     </div>
   );
 }
