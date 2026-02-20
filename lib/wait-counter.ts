@@ -173,16 +173,19 @@ export function calculateWaitAttempts(
     // ① 重量差
     const diff = targetWeight - otherWeight;
 
-    // ② 基本加算数
+    // ② 基本加算数 — 選手個別設定があれば優先、なければ大会設定
+    const z3 = targetAthlete.custom_zone_3 ?? competition.config_wait_zone_a;
+    const z2 = targetAthlete.custom_zone_2 ?? competition.config_wait_zone_b;
+    const z1 = targetAthlete.custom_zone_1 ?? competition.config_wait_zone_c;
+
     let baseAddition = 0;
-    if (diff >= competition.config_wait_zone_a) {
+    if (diff >= z3) {
       baseAddition = 3;
-    } else if (diff >= competition.config_wait_zone_b) {
+    } else if (diff >= z2) {
       baseAddition = 2;
-    } else if (diff >= competition.config_wait_zone_c) {
+    } else if (diff >= z1) {
       baseAddition = 1;
     } else {
-      // diff が zone_c 未満 → カウントしない
       continue;
     }
 

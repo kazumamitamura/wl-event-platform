@@ -104,6 +104,9 @@ CREATE TABLE IF NOT EXISTS wl_athletes (
   snatch_1st_weight INTEGER NOT NULL,
   jerk_1st_weight INTEGER NOT NULL,
   group_name TEXT NOT NULL,
+  custom_zone_3 INTEGER,  -- 個別設定: 3本待ちの重量差 (NULL = 大会設定を使用)
+  custom_zone_2 INTEGER,  -- 個別設定: 2本待ちの重量差
+  custom_zone_1 INTEGER,  -- 個別設定: 1本待ちの重量差
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(competition_id, lot_number)

@@ -52,6 +52,9 @@ export interface Athlete {
   snatch_1st_weight: number;
   jerk_1st_weight: number;
   group_name: string;
+  custom_zone_3: number | null;
+  custom_zone_2: number | null;
+  custom_zone_1: number | null;
   created_at: string;
   updated_at: string;
 }

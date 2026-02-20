@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useCompetitionStore } from '@/lib/store/competition-store';
 import { calculateWaitAttempts, buildAttemptQueue, liftTypeLabel, getCurrentLiftType } from '@/lib/wait-counter';
+import WaitZoneSettingsForm from '@/app/components/WaitZoneSettingsForm';
 import type { Competition, WaitCounterInfo } from '@/types';
 
 export default function AthletePage() {
@@ -166,6 +167,18 @@ export default function AthletePage() {
             </select>
           </div>
         )}
+
+        {/* ── 待ち本数 個別設定 ─────── */}
+        {selectedAthleteId && selectedCompId && (() => {
+          const selectedAthlete = athletes.find((a) => a.id === selectedAthleteId);
+          if (!selectedAthlete) return null;
+          return (
+            <WaitZoneSettingsForm
+              athlete={selectedAthlete}
+              onSaved={() => loadCompetitionData(selectedCompId)}
+            />
+          );
+        })()}
 
         {/* ── 現在のバー重量 ────────── */}
         {currentAttempt && (
